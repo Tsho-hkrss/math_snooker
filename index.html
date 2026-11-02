@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Math Snooker - 數學英式桌球</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #0b0f19;
+            color: #f1f5f9;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            user-select: none;
+            overflow-x: hidden;
+        }
+
+        #table-container {
+            position: relative;
+            margin-top: 10px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 20px rgba(34, 197, 94, 0.2);
+            border-radius: 16px;
+            background: linear-gradient(135deg, #422006 0%, #291203 100%);
+            padding: 18px;
+            border: 4px solid #78350f;
+        }
+
+        canvas {
+            display: block;
+            background-color: #15803d; /* Snooker green cloth */
+            border-radius: 8px;
+            box-shadow: inset 0 0 35px rgba(0,0,0,0.65);
+            cursor: crosshair;
+            touch-action: none;
+        }
+
+        .overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.94);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 50;
+            border-radius: 8px;
+            backdrop-filter: blur(6px);
+        }
+
+        .btn-menu {
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 1.05rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+            border: 1px solid #60a5fa;
+            width: 300px;
+            text-align: center;
+            margin-bottom: 12px;
+        }
+
+        .btn-menu:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(37, 99, 235, 0.5);
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+        }
+
+        .floating-score {
+            position: absolute;
+            pointer-events: none;
+            font-weight: 900;
+            font-size: 24px;
+            text-shadow: 2px 2px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+            animation: floatUp 1.2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+            z-index: 100;
+        }
+
+        @keyframes floatUp {
+            0% { transform: translate(-50%, -50%) scale(0.6); opacity: 0; }
+            20% { transform: translate(-50%, -60%) scale(1.25); opacity: 1; }
+            100% { transform: translate(-50%, -110px) scale(1); opacity: 0; }
+        }
+    </style>
+</head>
+<body class="antialiased select-none">
+
+    <div class="w-full max-w-[1000px] flex flex-col items-center pt-3 px-3">
+        
+        <!-- Header / HUD -->
+        <div class="w-full flex justify-between items-center bg-slate-800/90 rounded-xl p-3 shadow-2xl border border-slate-700 mb-2 relative overflow-hidden backdrop-blur">
+            <div class="flex flex-col flex-1 z-10">
+                <div class="flex items-center gap-2 mb-1">
+                    <span class="text-xs text-emerald-400 font-bold uppercase tracking-wider bg-slate-900 px-2 py-0.5 rounded border border-emerald-500/30" id="ui-mode">請選擇模式</span>
+                    <span class="text-xs text-slate-400 font-semibold" id="ui-progress">目標: 0/0</span>
+                </div>
+                <div class="text-xl md:text-2xl font-black text-amber-300 tracking-wide drop-shadow-md" id="ui-question">
+                    Math Snooker 數學英式桌球
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-4 z-10 border-l border-slate-700 pl-4">
+                <div class="flex flex-col items-end">
+                    <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Score</span>
+                    <span class="text-3xl font-black text-white leading-none tracking-tight" id="ui-score">0</span>
+                </div>
+                
+                <button id="soundToggle" onclick="toggleSound()" class="p-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-slate-200 transition-colors">
+                    🔊
+                </button>
+            </div>
+        </div>
+        
+        <!-- Message Bar & Menu Trigger -->
+        <div class="flex justify-between items-center w-full px-2 mb-1">
+            <div id="ui-message" class="text-sm md:text-base font-bold text-emerald-400 transition-opacity duration-300 h-6 flex items-center">
+                拉拽白球以瞄準擊球！
+            </div>
+            <button onclick="showMenu()" class="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-600 px-3 py-1 rounded-md text-slate-300 font-medium transition-all">
+                主選單 Menu
+            </button>
+        </div>
+
+        <div id="table-container">
+            <canvas id="gameCanvas" width="960" height="500"></canvas>
+            
+            <!-- Main Menu Modal -->
+            <div id="menu-overlay" class="overlay">
+                <h1 class="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 mb-3 text-center">
+                    MATH SNOOKER
+                </h1>
+                <p class="text-slate-400 text-xs md:text-sm mb-6 text-center">請打入答案正確的<span class="text-red-400 font-bold">紅球</span>！</p>
+                
+                <div class="flex flex-col gap-2">
+                    <button class="btn-menu" onclick="startGame('quadratics')">
+                        1. 二次方程與因式分解
+                    </button>
+                    <button class="btn-menu" onclick="startGame('trigo')">
+                        2. 特殊角與三角恒等式
+                    </button>
+                    <button class="btn-menu" onclick="startGame('inequalities')">
+                        3. 不等式與整數解
+                    </button>
+                </div>
+
+                <div class="mt-6 text-xs text-slate-400 max-w-md text-center leading-relaxed bg-slate-900/60 p-3 rounded-lg border border-slate-800">
+                    <strong class="text-amber-400">計分規則：</strong><br>
+                    • 正確答案紅球：<span class="text-emerald-400 font-bold">+10分</span> | 錯誤干擾紅球：<span class="text-red-400 font-bold">-5分</span><br>
+                    • 白球洗袋：<span class="text-red-400 font-bold">-5分</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class SoundEngine {
+            constructor() {
+                this.ctx = null;
+                this.enabled = true;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioCtx();
+                }
+                if (this.ctx && this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            // Generate noise buffer for transient simulation
+            createNoiseBuffer(duration = 0.1) {
+                const bufferSize = this.ctx.sampleRate * duration;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const output = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    output[i] = Math.random() * 2 - 1;
+                }
+                return buffer;
+            }
+
+            // 1. Ball-to-Ball Collision (修改為更厚實的桌球撞擊聲)
+            playBallHit(intensity = 1) {
+                if (!this.enabled || intensity < 0.04) return;
+                this.init();
+
+                const now = this.ctx.currentTime;
+                const norm = Math.min(1, Math.max(0.1, intensity));
+
+                // 降低主共鳴頻率，使其更沉穩而不是清脆
+                const osc1 = this.ctx.createOscillator();
+                const gain1 = this.ctx.createGain();
+                osc1.type = 'sine';
+                const baseFreq = 1200 + (Math.random() * 150 - 75); // 從 3200Hz 降至 1200Hz
+                osc1.frequency.setValueAtTime(baseFreq, now);
+                osc1.frequency.exponentialRampToValueAtTime(baseFreq * 0.6, now + 0.02);
+
+                gain1.gain.setValueAtTime(0.8 * norm, now);
+                gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.025);
+
+                osc1.connect(gain1);
+                gain1.connect(this.ctx.destination);
+                osc1.start(now);
+                osc1.stop(now + 0.03);
+
+                // 副共鳴波：改用三角波並降低頻率以增加聲音厚度 (低頻主體)
+                const osc2 = this.ctx.createOscillator();
+                const gain2 = this.ctx.createGain();
+                osc2.type = 'triangle'; 
+                osc2.frequency.setValueAtTime(baseFreq * 0.4, now);
+
+                gain2.gain.setValueAtTime(0.6 * norm, now);
+                gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.015);
+
+                osc2.connect(gain2);
+                gain2.connect(this.ctx.destination);
+                osc2.start(now);
+                osc2.stop(now + 0.02);
+
+                // 瞬態噪音：將高通(highpass)改為帶通(bandpass)，去除玻璃般的尖銳聲
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = this.createNoiseBuffer(0.02);
+                
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.setValueAtTime(1500, now); // 從 2600Hz 降至 1500Hz
+                filter.Q.setValueAtTime(1.5, now);
+
+                const noiseGain = this.ctx.createGain();
+                noiseGain.gain.setValueAtTime(0.45 * norm, now);
+                noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.01);
+
+                noise.connect(filter);
+                filter.connect(noiseGain);
+                noiseGain.connect(this.ctx.destination);
+                noise.start(now);
+            }
+
+            // 2. Cue Tip Strike (Wood Tap + Chalk/Leather friction)
+            playCueStrike(power = 1) {
+                if (!this.enabled) return;
+                this.init();
+
+                const now = this.ctx.currentTime;
+                const norm = Math.min(1, Math.max(0.15, power));
+
+                // Wooden stick impact tone
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(240, now);
+                osc.frequency.exponentialRampToValueAtTime(70, now + 0.035);
+
+                gain.gain.setValueAtTime(0.85 * norm, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.035);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.04);
+
+                // Leather tip & chalk texture noise
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = this.createNoiseBuffer(0.03);
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.setValueAtTime(1900, now);
+                filter.Q.setValueAtTime(2.2, now);
+
+                const noiseGain = this.ctx.createGain();
+                noiseGain.gain.setValueAtTime(0.6 * norm, now);
+                noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.016);
+
+                noise.connect(filter);
+                filter.connect(noiseGain);
+                noiseGain.connect(this.ctx.destination);
+                noise.start(now);
+            }
+
+            // 3. Cushion Impact (Rubber thud)
+            playCushionHit(intensity = 1) {
+                if (!this.enabled || intensity < 0.04) return;
+                this.init();
+
+                const now = this.ctx.currentTime;
+                const norm = Math.min(1, Math.max(0.1, intensity));
+
+                // Rubber cushion low-frequency thud
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(150 + Math.random() * 20, now);
+                osc.frequency.exponentialRampToValueAtTime(45, now + 0.055);
+
+                gain.gain.setValueAtTime(0.65 * norm, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.055);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.06);
+
+                // Cloth dampening noise
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = this.createNoiseBuffer(0.04);
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(380, now);
+
+                const noiseGain = this.ctx.createGain();
+                noiseGain.gain.setValueAtTime(0.45 * norm, now);
+                noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+
+                noise.connect(filter);
+                filter.connect(noiseGain);
+                noiseGain.connect(this.ctx.destination);
+                noise.start(now);
+            }
+
+            // 4. Pocket Drop & Roll (Two-part: Rim contact + Net/Bottom Drop)
+            playPocket() {
+                if (!this.enabled) return;
+                this.init();
+
+                const now = this.ctx.currentTime;
+
+                // Part 1: Rim Contact / Leather Trim Click
+                const osc1 = this.ctx.createOscillator();
+                const gain1 = this.ctx.createGain();
+                osc1.type = 'triangle';
+                osc1.frequency.setValueAtTime(360, now);
+                osc1.frequency.exponentialRampToValueAtTime(140, now + 0.03);
+
+                gain1.gain.setValueAtTime(0.5, now);
+                gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+
+                osc1.connect(gain1);
+                gain1.connect(this.ctx.destination);
+                osc1.start(now);
+                osc1.stop(now + 0.035);
+
+                // Part 2: Pocket Drop Resonance (Delayed ~45ms)
+                const dropTime = now + 0.045;
+
+                const osc2 = this.ctx.createOscillator();
+                const gain2 = this.ctx.createGain();
+                osc2.type = 'sine';
+                osc2.frequency.setValueAtTime(115, dropTime);
+                osc2.frequency.exponentialRampToValueAtTime(40, dropTime + 0.12);
+
+                gain2.gain.setValueAtTime(0.7, dropTime);
+                gain2.gain.exponentialRampToValueAtTime(0.001, dropTime + 0.12);
+
+                osc2.connect(gain2);
+                gain2.connect(this.ctx.destination);
+                osc2.start(dropTime);
+                osc2.stop(dropTime + 0.13);
+
+                // Pocket interior dampening sound
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = this.createNoiseBuffer(0.1);
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(320, dropTime);
+
+                const noiseGain = this.ctx.createGain();
+                noiseGain.gain.setValueAtTime(0.35, dropTime);
+                noiseGain.gain.exponentialRampToValueAtTime(0.001, dropTime + 0.09);
+
+                noise.connect(filter);
+                filter.connect(noiseGain);
+                noiseGain.connect(this.ctx.destination);
+                noise.start(dropTime);
+            }
+
+            // Score indicator
+            playScore(isPositive = true) {
+                if (!this.enabled) return;
+                this.init();
+
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+
+                osc.type = 'sine';
+                if (isPositive) {
+                    osc.frequency.setValueAtTime(587.33, now); // D5
+                    osc.frequency.setValueAtTime(880, now + 0.08); // A5
+                    gain.gain.setValueAtTime(0.15, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+                } else {
+                    osc.frequency.setValueAtTime(220, now);
+                    osc.frequency.setValueAtTime(174.61, now + 0.08);
+                    gain.gain.setValueAtTime(0.2, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+                }
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.25);
+            }
+        }
+
+        const soundManager = new SoundEngine();
+
+        function toggleSound() {
+            soundManager.enabled = !soundManager.enabled;
+            document.getElementById('soundToggle').textContent = soundManager.enabled ? '🔊' : '🔇';
+        }
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const tableContainer = document.getElementById('table-container');
+
+        // UI DOM
+        const uiMode = document.getElementById('ui-mode');
+        const uiQuestion = document.getElementById('ui-question');
+        const uiProgress = document.getElementById('ui-progress');
+        const uiScore = document.getElementById('ui-score');
+        const uiMessage = document.getElementById('ui-message');
+        const menuOverlay = document.getElementById('menu-overlay');
+
+        // Table & Ball Proportions
+        const BALL_RADIUS = 18; // Standard comfortable ball size
+        const POCKET_RADIUS = 22; // Pocket radius matching 18px balls
+        const PADDING = 42; // Cushion width
+
+        const TABLE_W = canvas.width - (PADDING * 2);
+        const TABLE_H = canvas.height - (PADDING * 2);
+        const CENTER_Y = canvas.height / 2;
+        const BAULK_X = PADDING + (TABLE_W * 0.22);
+        const D_RADIUS = 85;
+
+        // Physics Tuning
+        const FRICTION = 0.986;
+        const CUSHION_RESTITUTION = 0.78;
+        const BALL_RESTITUTION = 0.94;
+        const MIN_VELOCITY = 0.04;
+
+        // Standard 6 Pocket Positions
+        const POCKETS = [
+            { x: PADDING, y: PADDING }, // Top Left
+            { x: canvas.width / 2, y: PADDING - 10 }, // Top Center
+            { x: canvas.width - PADDING, y: PADDING }, // Top Right
+            { x: PADDING, y: canvas.height - PADDING }, // Bottom Left
+            { x: canvas.width / 2, y: canvas.height - PADDING + 10 }, // Bottom Center
+            { x: canvas.width - PADDING, y: canvas.height - PADDING } // Bottom Right
+        ];
+
+        let gameState = 'MENU';
+        let currentMode = '';
+        let score = 0;
+        let balls = [];
+        let cueBall = null;
+        let activeQuestion = { text: '', correctVals: [] };
+        let msgTimeout = null;
+
+        // Mouse / Touch Drag Control
+        let isDragging = false;
+        let dragStart = { x: 0, y: 0 };
+        let currentMouse = { x: 0, y: 0 };
+
+        class Ball {
+            constructor(x, y, color, type, value = 0) {
+                this.x = x;
+                this.y = y;
+                this.vx = 0;
+                this.vy = 0;
+                this.radius = BALL_RADIUS;
+                this.color = color;
+                this.type = type; // 'cue', 'red', 'blue', 'black'
+                this.value = value;
+                this.active = true;
+                
+                // Math Payload
+                this.text = ""; 
+                this.isCorrect = false;
+            }
+
+            draw(ctx) {
+                if (!this.active) return;
+                
+                // Shadow
+                ctx.beginPath();
+                ctx.arc(this.x + 3, this.y + 3, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+                ctx.fill();
+
+                // Ball Sphere Gradient
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                
+                let grad = ctx.createRadialGradient(
+                    this.x - this.radius * 0.35, this.y - this.radius * 0.35, this.radius * 0.1, 
+                    this.x, this.y, this.radius
+                );
+                
+                if (this.color === 'white') {
+                    grad.addColorStop(0, '#ffffff');
+                    grad.addColorStop(1, '#cbd5e1');
+                } else if (this.color === 'black') {
+                    grad.addColorStop(0, '#475569');
+                    grad.addColorStop(1, '#020617');
+                } else if (this.color === 'blue') {
+                    grad.addColorStop(0, '#60a5fa');
+                    grad.addColorStop(1, '#1d4ed8');
+                } else {
+                    // Red Ball
+                    grad.addColorStop(0, '#f87171');
+                    grad.addColorStop(1, '#dc2626');
+                }
+                
+                ctx.fillStyle = grad;
+                ctx.fill();
+
+                // Inner Badge & High-Contrast Text Rendering for Red Balls
+                if (this.type === 'red' && this.text !== "") {
+                    // White circular badge inside red ball for crisp readability
+                    const badgeRadius = this.radius * 0.72;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, badgeRadius, 0, Math.PI * 2);
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fill();
+                    ctx.lineWidth = 1;
+                    ctx.strokeStyle = '#991b1b';
+                    ctx.stroke();
+
+                    // Text with auto-fit font scaling logic
+                    ctx.save();
+                    ctx.fillStyle = '#0f172a'; // Dark slate text
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    
+                    let baseFontSize = 13; // Crisp font size
+                    const maxTextWidth = badgeRadius * 1.8;
+                    
+                    ctx.font = `bold ${baseFontSize}px Inter, sans-serif`;
+                    let textWidth = ctx.measureText(this.text).width;
+                    
+                    if (textWidth > maxTextWidth) {
+                        baseFontSize = Math.max(9, Math.floor(baseFontSize * (maxTextWidth / textWidth)));
+                        ctx.font = `bold ${baseFontSize}px Inter, sans-serif`;
+                    }
+
+                    // Stroke for ultimate clarity
+                    ctx.lineWidth = 1.5;
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.strokeText(this.text, this.x, this.y + 0.5);
+                    ctx.fillText(this.text, this.x, this.y + 0.5);
+                    ctx.restore();
+                }
+            }
+
+            update() {
+                if (!this.active) return;
+                
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                this.vx *= FRICTION;
+                this.vy *= FRICTION;
+
+                if (Math.abs(this.vx) < MIN_VELOCITY) this.vx = 0;
+                if (Math.abs(this.vy) < MIN_VELOCITY) this.vy = 0;
+
+                this.handleCushions();
+            }
+
+            handleCushions() {
+                if (this.x - this.radius < PADDING) { 
+                    this.x = PADDING + this.radius; 
+                    this.vx *= -CUSHION_RESTITUTION;
+                    soundManager.playCushionHit(Math.abs(this.vx) / 8);
+                } else if (this.x + this.radius > canvas.width - PADDING) { 
+                    this.x = canvas.width - PADDING - this.radius; 
+                    this.vx *= -CUSHION_RESTITUTION; 
+                    soundManager.playCushionHit(Math.abs(this.vx) / 8);
+                }
+                
+                if (this.y - this.radius < PADDING) { 
+                    this.y = PADDING + this.radius; 
+                    this.vy *= -CUSHION_RESTITUTION; 
+                    soundManager.playCushionHit(Math.abs(this.vy) / 8);
+                } else if (this.y + this.radius > canvas.height - PADDING) { 
+                    this.y = canvas.height - PADDING - this.radius; 
+                    this.vy *= -CUSHION_RESTITUTION; 
+                    soundManager.playCushionHit(Math.abs(this.vy) / 8);
+                }
+            }
+        }
+
+        const MathEngine = {
+            // Mode 1: Quadratic Equations & Factorization
+            quadratics: () => {
+                let r1 = Math.floor(Math.random() * 11) - 5; // -5 to 5
+                let r2 = Math.floor(Math.random() * 11) - 5;
+                
+                let b = -(r1 + r2);
+                let c = r1 * r2;
+                
+                let bStr = b === 0 ? "" : (b > 0 ? `+ ${b}x ` : `- ${Math.abs(b)}x `);
+                if (b === 1) bStr = "+ x ";
+                if (b === -1) bStr = "- x ";
+                
+                let cStr = c === 0 ? "" : (c > 0 ? `+ ${c}` : `- ${Math.abs(c)}`);
+                let qText = `解方程: x² ${bStr}${cStr} = 0`;
+                
+                let correct = [r1.toString()];
+                if (r1 !== r2) correct.push(r2.toString());
+
+                let pool = [];
+                for (let i = -7; i <= 7; i++) pool.push(i.toString());
+                let wrongPool = pool.filter(n => !correct.includes(n));
+
+                return { text: qText, correctVals: correct, wrongPool: wrongPool };
+            },
+
+            // Mode 2: Special Angles & Trigonometry
+            trigo: () => {
+                const targets = [
+                    { val: "0.5", label: "0.5", correct: ["sin30°", "cos60°"] },
+                    { val: "1", label: "1", correct: ["tan45°", "sin90°", "cos0°"] },
+                    { val: "0", label: "0", correct: ["sin0°", "cos90°"] },
+                    { val: "-1", label: "-1", correct: ["cos180°", "sin270°"] },
+                    { val: "√3/2", label: "√3/2 (≈0.866)", correct: ["sin60°", "cos30°"] }
+                ];
+                let t = targets[Math.floor(Math.random() * targets.length)];
+                let allItems = ["sin30°", "cos60°", "tan45°", "sin90°", "cos0°", "sin0°", "cos90°", "cos180°", "sin270°", "tan30°", "sin60°", "cos30°", "sin45°", "cos45°"];
+                let wrongPool = allItems.filter(item => !t.correct.includes(item));
+
+                return { text: `找出數值等於 ${t.label} 的角度`, correctVals: t.correct, wrongPool: wrongPool };
+            },
+
+            // Mode 3: Inequalities & Integers
+            inequalities: () => {
+                let lower = Math.floor(Math.random() * 5) - 3; // -3 to 1
+                let upper = lower + Math.floor(Math.random() * 3) + 2; // span of 2 to 4
+                
+                let qText = `找出符合 ${lower} < x ≤ ${upper} 的整數 x`;
+                let correct = [];
+                for (let i = lower + 1; i <= upper; i++) {
+                    correct.push(i.toString());
+                }
+
+                let pool = ["-5", "-4", "-3", "-2", "-1", "0", "1", "2", "3", "4", "5", "6"];
+                let wrongPool = pool.filter(n => !correct.includes(n));
+
+                return { text: qText, correctVals: correct, wrongPool: wrongPool };
+            }
+        };
+
+        function showMessage(msg, color = '#34d399') {
+            uiMessage.textContent = msg;
+            uiMessage.style.color = color;
+            uiMessage.style.opacity = 1;
+            if (msgTimeout) clearTimeout(msgTimeout);
+            msgTimeout = setTimeout(() => { uiMessage.style.opacity = 0.8; }, 3000);
+        }
+
+        function spawnFloatingText(text, x, y, color) {
+            const el = document.createElement('div');
+            el.className = 'floating-score';
+            el.textContent = text;
+            el.style.color = color;
+            
+            const rect = canvas.getBoundingClientRect();
+            const parentRect = tableContainer.getBoundingClientRect();
+            
+            el.style.left = `${(x + rect.left - parentRect.left)}px`;
+            el.style.top = `${(y + rect.top - parentRect.top)}px`;
+            
+            tableContainer.appendChild(el);
+            setTimeout(() => el.remove(), 1200);
+        }
+
+        function updateProgressUI() {
+            let activeReds = balls.filter(b => b.type === 'red' && b.active);
+            let correctLeft = activeReds.filter(b => b.isCorrect).length;
+            let totalCorrect = activeQuestion.correctVals.length;
+            uiProgress.textContent = `本題剩餘目標: ${correctLeft}`;
+        }
+
+        function refreshQuestion() {
+            let activeReds = balls.filter(b => b.type === 'red' && b.active);
+            if (activeReds.length === 0) return;
+
+            let qData = MathEngine[currentMode]();
+            activeQuestion = qData;
+            uiQuestion.textContent = activeQuestion.text;
+
+            // Shuffle active reds randomly
+            activeReds.sort(() => Math.random() - 0.5);
+
+            let correctToAssign = [...qData.correctVals];
+            let countToPlace = Math.min(correctToAssign.length, activeReds.length);
+
+            if (countToPlace === 0 && activeReds.length > 0) {
+                countToPlace = 1;
+                correctToAssign = [qData.correctVals[0]];
+            }
+
+            for (let i = 0; i < activeReds.length; i++) {
+                let ball = activeReds[i];
+                if (i < countToPlace) {
+                    ball.text = correctToAssign[i];
+                    ball.isCorrect = true;
+                } else {
+                    let wrong = qData.wrongPool[Math.floor(Math.random() * qData.wrongPool.length)];
+                    ball.text = wrong;
+                    ball.isCorrect = false;
+                }
+            }
+
+            updateProgressUI();
+        }
+
+        function checkQuestionAdvancement() {
+            let activeReds = balls.filter(b => b.type === 'red' && b.active);
+            if (activeReds.length === 0) {
+                showMessage("🎉 恭喜清檯！重新擺球...", "#f59e0b");
+                setTimeout(() => initTable(), 2000);
+                return;
+            }
+
+            let correctLeft = activeReds.some(b => b.isCorrect);
+            if (!correctLeft) {
+                showMessage("✅ 完成該題！換下一題...", "#38bdf8");
+                soundManager.playScore(true);
+                refreshQuestion();
+            } else {
+                updateProgressUI();
+            }
+        }
+
+        function initTable() {
+            balls = [];
+
+            // 1. Cue Ball (White)
+            cueBall = new Ball(BAULK_X - 40, CENTER_Y, 'white', 'cue');
+            balls.push(cueBall);
+
+            // 2. 10 Red Balls arranged in classical triangle (4 rows: 1+2+3+4 = 10)
+            const startX = canvas.width * 0.64;
+            const startY = CENTER_Y;
+            const rowSpacing = BALL_RADIUS * Math.sqrt(3) + 1;
+
+            for (let col = 0; col < 4; col++) {
+                for (let row = 0; row <= col; row++) {
+                    let x = startX + (col * rowSpacing);
+                    let y = startY - (col * BALL_RADIUS) + (row * BALL_RADIUS * 2);
+                    balls.push(new Ball(x, y, '#ef4444', 'red', 10));
+                }
+            }
+
+            refreshQuestion();
+            updateScoreDisplay();
+        }
+
+        function getSafeSpawnPos(defaultX, defaultY) {
+            let x = defaultX, y = defaultY;
+            let attempts = 0;
+            while (attempts < 40) {
+                let overlap = balls.some(b => b.active && Math.hypot(b.x - x, b.y - y) < BALL_RADIUS * 2 + 2);
+                if (!overlap) return { x, y };
+                x = defaultX + (Math.random() * 80 - 40);
+                y = defaultY + (Math.random() * 80 - 40);
+                attempts++;
+            }
+            return { x: canvas.width / 2, y: canvas.height / 2 };
+        }
+
+        function respawnBall(ball, x, y) {
+            let pos = getSafeSpawnPos(x, y);
+            ball.x = pos.x;
+            ball.y = pos.y;
+            ball.vx = 0;
+            ball.vy = 0;
+            ball.active = true;
+        }
+
+        function handlePhysics() {
+            for (let b of balls) b.update();
+
+            // Ball to Ball Collisions
+            for (let i = 0; i < balls.length; i++) {
+                if (!balls[i].active) continue;
+                for (let j = i + 1; j < balls.length; j++) {
+                    if (!balls[j].active) continue;
+
+                    let b1 = balls[i], b2 = balls[j];
+                    let dx = b2.x - b1.x, dy = b2.y - b1.y;
+                    let dist = Math.hypot(dx, dy);
+                    let minDist = b1.radius + b2.radius;
+
+                    if (dist < minDist) {
+                        // Separate overlapping balls
+                        let overlap = minDist - dist;
+                        let nx = dx / dist, ny = dy / dist;
+
+                        b1.x -= nx * (overlap / 2.01);
+                        b1.y -= ny * (overlap / 2.01);
+                        b2.x += nx * (overlap / 2.01);
+                        b2.y += ny * (overlap / 2.01);
+
+                        // Calculate impact impulse
+                        let kx = b1.vx - b2.vx, ky = b1.vy - b2.vy;
+                        let p = (nx * kx + ny * ky) * BALL_RESTITUTION;
+
+                        b1.vx -= p * nx; b1.vy -= p * ny;
+                        b2.vx += p * nx; b2.vy += p * ny;
+
+                        let relSpeed = Math.hypot(kx, ky);
+                        soundManager.playBallHit(relSpeed / 10);
+                    }
+                }
+            }
+
+            // Pocketing Check
+            for (let b of balls) {
+                if (!b.active) continue;
+                for (let p of POCKETS) {
+                    // 放寬判定距離 (原本是 POCKET_RADIUS，現在增加 12 像素)
+                    if (Math.hypot(b.x - p.x, b.y - p.y) < POCKET_RADIUS + 12) {
+                        pocketBall(b);
+                        break;
+                    }
+                }
+            }
+        }
+
+        function updateScoreDisplay() {
+            uiScore.textContent = score;
+        }
+
+        function pocketBall(ball) {
+            ball.vx = 0; ball.vy = 0;
+            ball.active = false;
+            soundManager.playPocket();
+
+            if (ball.type === 'cue') {
+                score -= 5;
+                spawnFloatingText("-5 犯規", ball.x, ball.y, "#f87171");
+                showMessage("⚠️️ 白球洗袋犯規！扣 5 分", "#f87171");
+                soundManager.playScore(false);
+                respawnBall(ball, BAULK_X - 30, CENTER_Y);
+            }
+            else if (ball.type === 'red') {
+                if (ball.isCorrect) {
+                    score += 10;
+                    spawnFloatingText("+10", ball.x, ball.y, "#34d399");
+                    showMessage(`✨ 答對了！(${ball.text}) +10分`, "#34d399");
+                    soundManager.playScore(true);
+                    checkQuestionAdvancement();
+                } else {
+                    score -= 5;
+                    spawnFloatingText("-5", ball.x, ball.y, "#f87171");
+                    showMessage(`❌ 答案錯誤 (${ball.text})！扣 5 分`, "#f87171");
+                    soundManager.playScore(false);
+                    respawnBall(ball, canvas.width / 2, CENTER_Y);
+                }
+            }
+
+            updateScoreDisplay();
+        }
+
+        function drawTable() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Cushions Outer Frame
+            ctx.fillStyle = '#14532d';
+            ctx.fillRect(0, 0, canvas.width, PADDING);
+            ctx.fillRect(0, canvas.height - PADDING, canvas.width, PADDING);
+            ctx.fillRect(0, 0, PADDING, canvas.height);
+            ctx.fillRect(canvas.width - PADDING, 0, PADDING, canvas.height);
+
+            // Baulk Line & D
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(BAULK_X, PADDING);
+            ctx.lineTo(BAULK_X, canvas.height - PADDING);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(BAULK_X, CENTER_Y, D_RADIUS, Math.PI / 2, Math.PI * 1.5, false);
+            ctx.stroke();
+
+            // Pockets
+            POCKETS.forEach(p => {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, POCKET_RADIUS + 6, 0, Math.PI * 2);
+                ctx.fillStyle = '#64748b';
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, POCKET_RADIUS, 0, Math.PI * 2);
+                ctx.fillStyle = '#090d16';
+                ctx.fill();
+            });
+        }
+
+        function drawAimGuide() {
+            if (!isDragging) return;
+
+            let dx = dragStart.x - currentMouse.x;
+            let dy = dragStart.y - currentMouse.y;
+            let dist = Math.hypot(dx, dy);
+            let angle = Math.atan2(dy, dx);
+
+            // Aiming trajectory path
+            let aimLength = Math.min(dist * 3.5, 550);
+            let targetX = cueBall.x + Math.cos(angle) * aimLength;
+            let targetY = cueBall.y + Math.sin(angle) * aimLength;
+
+            ctx.beginPath();
+            ctx.moveTo(cueBall.x, cueBall.y);
+            ctx.lineTo(targetX, targetY);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([6, 8]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Cue Stick
+            let offset = BALL_RADIUS + 12;
+            let stickLen = Math.min(dist + 60, 240);
+
+            let sx = cueBall.x - Math.cos(angle) * offset;
+            let sy = cueBall.y - Math.sin(angle) * offset;
+            let ex = cueBall.x - Math.cos(angle) * (offset + stickLen);
+            let ey = cueBall.y - Math.sin(angle) * (offset + stickLen);
+
+            ctx.beginPath();
+            ctx.moveTo(sx, sy);
+            ctx.lineTo(ex, ey);
+            ctx.strokeStyle = '#92400e';
+            ctx.lineWidth = 7;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+
+            // Cue chalk tip
+            ctx.beginPath();
+            ctx.moveTo(sx, sy);
+            ctx.lineTo(cueBall.x - Math.cos(angle) * (offset + 6), cueBall.y - Math.sin(angle) * (offset + 6));
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 7;
+            ctx.stroke();
+        }
+
+        function areBallsMoving() {
+            return balls.some(b => b.active && (Math.abs(b.vx) > MIN_VELOCITY || Math.abs(b.vy) > MIN_VELOCITY));
+        }
+
+        function getPointerPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return {
+                x: clientX - rect.left,
+                y: clientY - rect.top
+            };
+        }
+
+        function onPointerDown(e) {
+            if (gameState !== 'PLAYING' || areBallsMoving()) return;
+            soundManager.init();
+            
+            const pos = getPointerPos(e);
+            dragStart = pos;
+            currentMouse = pos;
+            isDragging = true;
+        }
+
+        function onPointerMove(e) {
+            if (!isDragging) return;
+            currentMouse = getPointerPos(e);
+        }
+
+        function onPointerUp() {
+            if (!isDragging) return;
+            isDragging = false;
+
+            let dx = dragStart.x - currentMouse.x;
+            let dy = dragStart.y - currentMouse.y;
+
+            let powerScale = 0.16;
+            let vx = dx * powerScale;
+            let vy = dy * powerScale;
+            let speed = Math.hypot(vx, vy);
+
+            const maxSpeed = 24;
+            if (speed > maxSpeed) {
+                vx = (vx / speed) * maxSpeed;
+                vy = (vy / speed) * maxSpeed;
+            }
+
+            if (speed > 0.5) {
+                cueBall.vx = vx;
+                cueBall.vy = vy;
+                soundManager.playCueStrike(speed / maxSpeed);
+            }
+        }
+
+        canvas.addEventListener('mousedown', onPointerDown);
+        canvas.addEventListener('mousemove', onPointerMove);
+        window.addEventListener('mouseup', onPointerUp);
+
+        canvas.addEventListener('touchstart', (e) => { e.preventDefault(); onPointerDown(e); }, { passive: false });
+        canvas.addEventListener('touchmove', (e) => { e.preventDefault(); onPointerMove(e); }, { passive: false });
+        canvas.addEventListener('touchend', onPointerUp);
+
+        function startGame(mode) {
+            currentMode = mode;
+            gameState = 'PLAYING';
+            score = 0;
+            menuOverlay.style.display = 'none';
+
+            const modeNames = {
+                'quadratics': '二次方程',
+                'trigo': '三角恒等式',
+                'inequalities': '不等式'
+            };
+
+            uiMode.textContent = modeNames[mode];
+            initTable();
+        }
+
+        function showMenu() {
+            gameState = 'MENU';
+            menuOverlay.style.display = 'flex';
+        }
+
+        function gameLoop() {
+            if (gameState === 'PLAYING') {
+                handlePhysics();
+            }
+
+            drawTable();
+
+            if (gameState === 'PLAYING') {
+                for (let b of balls) b.draw(ctx);
+                if (!areBallsMoving()) drawAimGuide();
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Kickoff game engine loop
+        requestAnimationFrame(gameLoop);
+
+    </script>
+</body>
+</html>
